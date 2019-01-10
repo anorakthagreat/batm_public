@@ -1,10 +1,9 @@
 package com.generalbytes.gradle
 
-import com.generalbytes.gradle.exception.MismatchedChecksumsException
-import com.generalbytes.gradle.exception.MissingChecksumAssertionsException
+
 import com.generalbytes.gradle.model.ChecksumAssertion
 import com.generalbytes.gradle.model.SimpleModuleVersionIdentifier
-import com.generalbytes.gradle.plugin.DependencyVerificationPluginExtension
+import com.generalbytes.gradle.plugin.DependencyVerificationPlugin
 import com.generalbytes.gradle.task.DependencyChecksums
 import org.gradle.api.InvalidUserDataException
 import org.gradle.api.Project
@@ -14,138 +13,140 @@ import org.gradle.api.artifacts.component.ComponentArtifactIdentifier
 import org.gradle.api.artifacts.component.ComponentIdentifier
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 import org.gradle.api.artifacts.component.ProjectComponentIdentifier
+import org.gradle.api.artifacts.result.ResolvedArtifactResult
 import org.gradle.api.attributes.Attribute
+import org.gradle.api.invocation.Gradle
 
 import java.security.MessageDigest
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentMap
+import java.util.concurrent.ForkJoinPool
+import java.util.concurrent.RecursiveTask
+import java.util.stream.Collectors
 
 class DependencyVerificationHelper {
-    static void verifyChecksums(Project project) {
-        final DependencyVerificationPluginExtension extension = project.dependencyVerifications
-        verifyChecksums(project, extension.configurations.get(), extension.assertions.get(), extension.strict.get(),
-            extension.skip.get())
+    private static final Map<Gradle, ConcurrentMap<String, String>> CACHES_BY_GRADLE_INVOCATION =
+        Collections.<Gradle, ConcurrentMap<String, String>> synchronizedMap(new WeakHashMap<>())
+
+    static ConcurrentMap<String, String> getCache(Gradle gradle) {
+        CACHES_BY_GRADLE_INVOCATION.entrySet()
+        CACHES_BY_GRADLE_INVOCATION.computeIfAbsent(gradle, { new ConcurrentHashMap<>() })
     }
 
-    static void verifyChecksums(Project project, Set<Object> configurations, Set<ChecksumAssertion> assertions,
-                                boolean strict, boolean skip) {
-        if (skip) {
-            project.logger.warn("Dependency verification skipped!")
-        } else {
-            final List<Configuration> configurationsToCheck = toConfigurations(project, configurations).sort {
-                Configuration a, Configuration b ->
-                    a.name.compareTo(b.name)
-            }
-            final Map<ModuleComponentIdentifier, ChecksumAssertion> assertionsByModule =
-                assertions.collectEntries({ [(it.artifactIdentifier): it] })
+    static class ChecksumComputationTask extends RecursiveTask<Set<ChecksumAssertion>> {
+        private final ConcurrentMap<String, String> checksumCache
+        private static final boolean PARALLEL = true
 
-            if (configurationsToCheck == null || configurationsToCheck.isEmpty()) {
-                throw new IllegalStateException("No configurations set for checksum verification.")
+        private final Map<ModuleComponentIdentifier, File> jobList
+
+        ChecksumComputationTask(ModuleComponentIdentifier module,
+                                File file,
+                                ConcurrentMap<String, String> checksumCache) {
+            this.checksumCache = checksumCache
+            jobList = [(module): file]
+        }
+
+        ChecksumComputationTask(Map<ModuleComponentIdentifier, File> jobList,
+                                ConcurrentMap<String, String> checksumCache) {
+            if (jobList == null) {
+                throw new IllegalArgumentException("Job list can't be null.")
+            }
+            this.checksumCache = checksumCache
+            this.jobList = jobList
+        }
+
+        @Override
+        protected Set<ChecksumAssertion> compute() {
+            if (PARALLEL) {
+                if (jobList.size() == 1) {
+                    final Map.Entry<ModuleComponentIdentifier, File> entry = jobList.entrySet().iterator().next()
+                    return [computeChecksum(entry.key, entry.value, checksumCache)] as Set
+                } else {
+                    return invokeAll(createSubtasks())
+                        .parallelStream()
+                        .flatMap({ it -> it.join().stream() })
+                        .collect(Collectors.toSet())
+                }
             } else {
-                final Set<ChecksumAssertion> unusedAssertions = new HashSet<>(assertions)
-                configurationsToCheck.each { Configuration configuration ->
-
-                    final Set<ChecksumAssertion> assertionsUsedForConfiguration =
-                        verifyChecksumsForConfiguration(project, configuration, assertionsByModule, strict)
-                    unusedAssertions.removeAll(assertionsUsedForConfiguration)
+                final Set<ChecksumAssertion> ret = new HashSet<>()
+                for (Map.Entry<ModuleComponentIdentifier, File> entry : jobList.entrySet()) {
+                    ret.add(computeChecksum(entry.key, entry.value, checksumCache))
                 }
-                unusedAssertions.each { ChecksumAssertion assertion ->
-                    project.logger.warn("Unused ${assertion.displayName}.")
-                }
+                return ret
             }
+        }
+
+        Collection<ChecksumComputationTask> createSubtasks() {
+            final Collection<ChecksumComputationTask> ret = new HashSet<>()
+            for (Map.Entry<ModuleComponentIdentifier, File> job : jobList.entrySet()) {
+                ret.add(new ChecksumComputationTask(job.key, job.value, checksumCache))
+            }
+            return ret
+        }
+
+        static ChecksumAssertion computeChecksum(ModuleComponentIdentifier module,
+                                                 File file,
+                                                 Map<String, String> checksumCache) {
+            /**
+             * toString() serialization and following deserialization is inefficient, but no Gradle-internal objects
+             * (eg. MavenUniqueSnapshotComponentIdentifier) have to be used
+             */
+            final SimpleModuleVersionIdentifier moduleId =
+                SimpleModuleVersionIdentifier.createWithClassifierHeuristics(module.toString(), file.name)
+
+            final String sha256 = (checksumCache != null
+                ? checksumCache.computeIfAbsent(file.canonicalPath, { calculateSha256(file) })
+                : calculateSha256(file))
+
+            return new ChecksumAssertion(moduleId, sha256)
+        }
+
+        static String calculateSha256(File file) {
+            MessageDigest md = MessageDigest.getInstance("SHA-256")
+            file.eachByte 4096, { byte[] bytes, int size ->
+                md.update(bytes, 0, size)
+            }
+            return md.digest().collect { String.format "%02x", it }.join()
         }
     }
 
-    private static Set<ChecksumAssertion> verifyChecksumsForConfiguration(
-        Project project,
-        Configuration configuration,
-        Map<ModuleComponentIdentifier, ChecksumAssertion> assertionsByModule,
-        boolean strict) {
+    static Map<Configuration, SortedSet<ChecksumAssertion>> assertionsByConfiguration(Project project,
+                                                                                      Set<Object> configurations) {
+        final Map<Configuration, SortedSet<ChecksumAssertion>> assertionsByConfiguration = new TreeMap<>({
+            Configuration a, Configuration b ->
+                (a.name <=> b.name)
+        })
+        toConfigurations(project, configurations).each { Configuration configuration ->
+                SortedSet<ChecksumAssertion> assertions =
+                    new TreeSet<>(assertionsForConfiguration(project, configuration))
+                assertionsByConfiguration.put(configuration, assertions)
+        }
+        assertionsByConfiguration
+    }
 
-        final Set<ChecksumAssertion> usedAssertions = new HashSet<>()
-        final Set<ChecksumAssertion> missingAssertions = new HashSet<>()
-        final Map<ChecksumAssertion, String> mismatchedChecksumsByAssertion = new HashMap<>()
-        final ArtifactCollection incomingArtifactCollection = getIncomingArtifactCollection(project, configuration)
-        incomingArtifactCollection.each {
-            final ComponentIdentifier identifier = it.id.componentIdentifier
+    static Set<ChecksumAssertion> assertionsForConfiguration(Project project,
+                                                             Configuration configuration) {
+        final Map<ModuleComponentIdentifier, File> jobList = new HashMap()
+        getIncomingArtifactCollection(project, configuration).each { ResolvedArtifactResult artifact ->
+            final ComponentIdentifier identifier = artifact.id.componentIdentifier
             if (identifier instanceof ModuleComponentIdentifier) {
-                try {
-                    final ChecksumAssertion assertionUsed = verifyModuleChecksum(
-                        project,
-                        configuration,
-                        assertionsByModule,
-                        /**
-                         * inefficient, but no Gradle-internal objects (e.g. MavenUniqueSnapshotComponentIdentifier)
-                         * have to be used
-                         */
-                        new SimpleModuleVersionIdentifier(identifier.toString()),
-                        it.file
-                    )
-
-
-                    usedAssertions.add(assertionUsed)
-                } catch (MissingChecksumAssertionsException e) {
-                    missingAssertions.addAll(e.missingAssertions)
-                } catch (MismatchedChecksumsException e) {
-                    mismatchedChecksumsByAssertion.putAll(e.mismatchedChecksumsByAssertion)
-                }
+                jobList.put(identifier, artifact.file)
             } else if (identifier instanceof ProjectComponentIdentifier) {
-                project.logger.info("Skipped checksum verification for project-local dependency $identifier.")
+                project.logger.info("Skipped processing assertion for project-local dependency $identifier.")
             } else if (identifier instanceof ComponentArtifactIdentifier) {
-                project.logger.info("Skipped checksum verification for local file dependency $identifier.")
+                project.logger.info("Skipped processing assertion for local file dependency $identifier.")
             } else {
-                throw new IllegalStateException("Unexpected component identifier type (${identifier.class}) for " +
-                    "identifier '$identifier'.")
-            }
-
-        }
-        if (missingAssertions.isEmpty() && mismatchedChecksumsByAssertion.isEmpty()) {
-            project.logger.quiet("All dependency checksums of ${configuration} have been successfully verified.")
-        } else {
-            if (!missingAssertions.isEmpty()) {
-                reportMissingAssertions(project, configuration, missingAssertions, strict)
-            }
-            if (!mismatchedChecksumsByAssertion.isEmpty()) {
-                reportChecksumMismatches(configuration, mismatchedChecksumsByAssertion)
+                throw new IllegalStateException(
+                    "Unexpected component identifier type (${identifier.class}) for identifier '$identifier'.")
             }
         }
-        return usedAssertions
-    }
 
-    private static void reportChecksumMismatches(Configuration configuration,
-                                                 Map<ChecksumAssertion, String> mismatchedChecksumsByAssertion) {
-        final StringBuilder sb = new StringBuilder()
-        sb.append("Mismatched checksum(s) for $configuration.").append('\n')
-            .append('Consider verifying the following assertions:').append('\n')
-
-        mismatchedChecksumsByAssertion.sort().each { ChecksumAssertion assertion, String actualChecksum ->
-            sb.append('    ').append(assertion.displayName).append(", actual checksum: '$actualChecksum'")
-                .append('\n')
-        }
-        throw new MismatchedChecksumsException(sb.toString(), mismatchedChecksumsByAssertion)
-    }
-
-    private static void reportMissingAssertions(Project project,
-                                                Configuration configuration,
-                                                Set<ChecksumAssertion> missingAssertions,
-                                                boolean strict) {
-
-        final StringBuilder sb = new StringBuilder()
-        sb.append("Missing integrity assertion(s) for $configuration.").append('\n')
-            .append("Consider adding the following to the '${DependencyVerificationPluginExtension.BLOCK_NAME}' block:")
-            .append('\n')
-
-        missingAssertions.sort().each { ChecksumAssertion missingAssertion ->
-            sb.append('    ').append(missingAssertion.definition()).append('\n')
-        }
-
-        sb.append('\n')
-            .append("Alternatively, you can run ${project.tasks.getByName(DependencyChecksums.TASK_NAME)} to generate" +
-            " complete listing.")
-
-        if (strict) {
-            throw new MissingChecksumAssertionsException(sb.toString(), missingAssertions)
-        } else {
-            project.logger.warn(sb.toString())
-        }
+        final Set<ChecksumAssertion> computedChecksums =
+            ForkJoinPool
+                .commonPool()
+                .invoke(new ChecksumComputationTask(jobList, getCache(project.gradle))
+            )
+        return computedChecksums
     }
 
     static ArtifactCollection getIncomingArtifactCollection(Project project, Configuration configuration) {
@@ -161,48 +162,6 @@ class DependencyVerificationHelper {
         }
     }
 
-    private static ChecksumAssertion verifyModuleChecksum(
-        Project project,
-        Configuration configuration,
-        Map<ModuleComponentIdentifier, ChecksumAssertion> assertionsByModule,
-        SimpleModuleVersionIdentifier module,
-        File file) {
-
-        final ChecksumAssertion userDefinedAssertion = assertionsByModule.get(module)
-        final def dependencyFileChecksum = calculateSha256(file)
-        if (userDefinedAssertion == null) {
-            final ChecksumAssertion missingAssertion = new ChecksumAssertion(module, dependencyFileChecksum)
-            final def msg = "No integrity assertion for ${module.displayName} ($configuration).\n" +
-                "Consider adding '${missingAssertion.definition()}' to the " +
-                "'$DependencyVerificationPluginExtension.BLOCK_NAME' block."
-
-            throw new MissingChecksumAssertionsException(msg, missingAssertion)
-        } else {
-
-            if (userDefinedAssertion.checksum != dependencyFileChecksum) {
-                throw new MismatchedChecksumsException(
-                    "Checksum mismatch for ${userDefinedAssertion.displayName}, $configuration (actual checksum: " +
-                        "'$dependencyFileChecksum').",
-                    userDefinedAssertion,
-                    dependencyFileChecksum
-                )
-            } else {
-                project.logger.info("Checksum match successfully verified for ${userDefinedAssertion.displayName}, "
-                    + "$configuration.")
-                return userDefinedAssertion
-            }
-
-        }
-    }
-
-    static String calculateSha256(File file) {
-        MessageDigest md = MessageDigest.getInstance("SHA-256")
-        file.eachByte 4096, { byte[] bytes, int size ->
-            md.update(bytes, 0, size)
-        }
-        return md.digest().collect { String.format "%02x", it }.join()
-    }
-
     static Set<Configuration> toConfigurations(Project project, Set<Object> configurationObjects) {
         final Set<Configuration> ret = new HashSet<>()
         for (Object cfg : configurationObjects) {
@@ -214,11 +173,25 @@ class DependencyVerificationHelper {
                     ret.add(cfg as Configuration)
                     break
                 default:
-                    throw new InvalidUserDataException("Illegal configuration specification ($cfg,  class: " +
-                        "${cfg?.class}) for $project.")
+                    throw new InvalidUserDataException(
+                        "Illegal configuration specification ($cfg,  class: ${cfg?.class}) for $project.")
             }
 
         }
         return ret
+    }
+
+    static SortedSet<ChecksumAssertion> globalAssertions(Project anyProject) {
+        final SortedSet<ChecksumAssertion> assertions = new TreeSet<>()
+        anyProject.rootProject.allprojects { Project p ->
+            if (p.pluginManager.hasPlugin(DependencyVerificationPlugin.ID)) {
+                final DependencyChecksums checksumsTask = DependencyChecksums.getChecksumsTask(p)
+                final Set<Object> configurations = checksumsTask.configurations.get()
+                assertionsByConfiguration(p, configurations).values().each {
+                    assertions.addAll(it)
+                }
+            }
+        }
+        assertions
     }
 }

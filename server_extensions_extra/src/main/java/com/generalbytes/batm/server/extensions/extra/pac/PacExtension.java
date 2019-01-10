@@ -19,7 +19,7 @@ package com.generalbytes.batm.server.extensions.extra.pac;
 
 
 import com.generalbytes.batm.server.extensions.*;
-import com.generalbytes.batm.server.extensions.extra.pac.sources.FixPriceRateSource;
+import com.generalbytes.batm.server.extensions.FixPriceRateSource;
 import com.generalbytes.batm.server.extensions.extra.dash.sources.coinmarketcap.CoinmarketcapRateSource;
 import com.generalbytes.batm.server.extensions.extra.pac.wallets.paccoind.PacRPCWallet;
 
@@ -92,11 +92,15 @@ public class PacExtension extends AbstractExtension{
                 return new FixPriceRateSource(rate,preferedFiatCurrency);
             }
             else if ("coinmarketcap".equalsIgnoreCase(rsType)) {
-                String preferedFiatCurrency = Currencies.USD;
+                String preferredFiatCurrency = Currencies.USD;
+                String apiKey = null;
                 if (st.hasMoreTokens()) {
-                    preferedFiatCurrency = st.nextToken().toUpperCase();
+                    preferredFiatCurrency = st.nextToken().toUpperCase();
                 }
-                return new CoinmarketcapRateSource(preferedFiatCurrency);
+                if (st.hasMoreTokens()) {
+                    apiKey = st.nextToken();
+                }
+                return new CoinmarketcapRateSource(apiKey, preferredFiatCurrency);
             }
         }
         return null;

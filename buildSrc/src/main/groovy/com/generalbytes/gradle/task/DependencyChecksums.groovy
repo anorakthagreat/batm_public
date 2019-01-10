@@ -6,17 +6,16 @@ import com.generalbytes.gradle.plugin.DependencyVerificationPluginExtension
 import org.gradle.api.DefaultTask
 import org.gradle.api.Project
 import org.gradle.api.artifacts.Configuration
-import org.gradle.api.artifacts.component.ComponentArtifactIdentifier
-import org.gradle.api.artifacts.component.ComponentIdentifier
-import org.gradle.api.artifacts.component.ModuleComponentIdentifier
-import org.gradle.api.artifacts.component.ProjectComponentIdentifier
+import org.gradle.api.provider.Property
 import org.gradle.api.provider.SetProperty
 import org.gradle.api.tasks.TaskAction
 
 class DependencyChecksums extends DefaultTask {
-    public static final String TASK_NAME = 'dependencyChecksums'
+    static final String TASK_NAME = 'dependencyChecksums'
+    static final String CHECKSUMS_FILE = 'dependencyChecksums.txt'
 
     final SetProperty<Object> configurations = project.objects.setProperty(Object)
+    final Property<Boolean> global = project.objects.property(Boolean)
 
     @SuppressWarnings('unused')
     void configuration(String configuration) {
@@ -31,62 +30,71 @@ class DependencyChecksums extends DefaultTask {
     @TaskAction
     @SuppressWarnings('unused')
     private void taskAction() {
-        printAssertions(buildAssertions(project))
+        printChecksumsTaskOutput(this, System.out)
     }
 
-    private Map<Configuration, SortedSet<ChecksumAssertion>> buildAssertions(Project project) {
-        final Map<Configuration, SortedSet<ChecksumAssertion>> assertionsByConfiguration = new HashMap<>()
-        DependencyVerificationHelper.toConfigurations(project, configurations.get()).each {
-            Configuration configuration ->
-                Set<ChecksumAssertion> assertions = assertionsForConfiguration(project, configuration)
-                assertionsByConfiguration[configuration] = assertions
-
-        }
-        assertionsByConfiguration
-    }
-
-    protected SortedSet<ChecksumAssertion> assertionsForConfiguration(Project project, Configuration configuration) {
-        final SortedSet<ChecksumAssertion> assertions = new TreeSet<>()
-        DependencyVerificationHelper.getIncomingArtifactCollection(project, configuration).each {
-            final ComponentIdentifier identifier = it.id.componentIdentifier
-            if (identifier instanceof ModuleComponentIdentifier) {
-                assertions.add(
-                    new ChecksumAssertion(identifier, DependencyVerificationHelper.calculateSha256(it.file))
+    static void printChecksumsTaskOutput(DependencyChecksums checksumsTask, PrintStream printStream) {
+        if (checksumsTask.global.get()) {
+            printGlobalAssertions(DependencyVerificationHelper.globalAssertions(checksumsTask.project), printStream)
+        } else {
+            final Map<Configuration, SortedSet<ChecksumAssertion>> assertionsByConfiguration =
+                DependencyVerificationHelper.assertionsByConfiguration(
+                    checksumsTask.project,
+                    checksumsTask.configurations.get()
                 )
-            } else if (identifier instanceof ProjectComponentIdentifier) {
-                logger.info("Skipped generating $DependencyVerificationPluginExtension.BLOCK_NAME assertion for " +
-                    "project-local dependency $identifier.")
-            } else if (identifier instanceof ComponentArtifactIdentifier) {
-                logger.info("Skipped generating $DependencyVerificationPluginExtension.BLOCK_NAME assertion for local" +
-                    "  file dependency $identifier.")
-            } else {
-                throw new IllegalStateException("Unexpected component identifier type (${identifier.class}) for " +
-                    "identifier '$identifier'.")
-            }
+            printAssertions(assertionsByConfiguration, printStream)
         }
-        assertions
     }
 
-    private static void printAssertions(Map<Configuration, SortedSet<ChecksumAssertion>> assertionsByConfiguration) {
+    static void printGlobalAssertions(SortedSet<ChecksumAssertion> assertions, PrintStream printStream) {
+        final boolean stdout = printStream == System.out
+        final String indent = stdout ? '    ' : ''
+        if (stdout) {
+            printStream.println ""
+            printStream.println "$DependencyVerificationPluginExtension.BLOCK_NAME {"
+        }
+        printStream.println "$indent// generated at ${currentTimestamp()}"
+        assertions.each { printStream.println "${indent}${it.definition()}" }
+        if (stdout) {
+            printStream.println "}"
+            printStream.println ""
+        }
+    }
+
+    static void printAssertions(Map<Configuration, SortedSet<ChecksumAssertion>> assertionsByConfiguration,
+                                PrintStream printStream) {
+        final boolean stdout = printStream == System.out
+        final String indent = stdout ? '    ' : ''
         final Set<ChecksumAssertion> printedAssertions = new HashSet<>()
-        println ""
-        println "$DependencyVerificationPluginExtension.BLOCK_NAME {"
+        if (stdout) {
+            printStream.println ""
+            printStream.println "$DependencyVerificationPluginExtension.BLOCK_NAME {"
+        }
         assertionsByConfiguration.each { Configuration configuration,
                                          SortedSet<ChecksumAssertion> assertions ->
 
-            println ""
-            print "    // $configuration (${new Date().format('yyyy-MM-dd\'T\'HH:mm:ss')});"
-            println " showing only previously unlisted assertions"
+            printStream.println ""
+            printStream.print "$indent// $configuration (${currentTimestamp()});"
+            printStream.println " showing only previously unlisted assertions"
             assertions.each { ChecksumAssertion assertion ->
                 if (!printedAssertions.contains(assertion)) {
-                    println "    ${assertion.definition()}"
+                    printStream.println "${indent}${assertion.definition()}"
                     printedAssertions.add(assertion)
                 }
             }
         }
-        println "}"
-        println ""
+        if (stdout) {
+            printStream.println "}"
+            printStream.println ""
+        }
     }
 
+    static DependencyChecksums getChecksumsTask(Project project) {
+        project.tasks.getByName(TASK_NAME) as DependencyChecksums
+    }
+
+    static String currentTimestamp() {
+        new Date().format('yyyy-MM-dd\'T\'HH:mm:ss')
+    }
 
 }

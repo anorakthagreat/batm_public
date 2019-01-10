@@ -17,8 +17,8 @@
  ************************************************************************************/
 package com.generalbytes.batm.server.extensions.extra.anon.wallets.anond;
 
-import com.azazar.bitcoin.jsonrpcclient.BitcoinException;
-import com.azazar.bitcoin.jsonrpcclient.BitcoinJSONRPCClient;
+import wf.bitcoin.javabitcoindrpcclient.BitcoinRPCException;
+import wf.bitcoin.javabitcoindrpcclient.BitcoinJSONRPCClient;
 import com.generalbytes.batm.server.extensions.Currencies;
 import com.generalbytes.batm.server.extensions.IWallet;
 
@@ -68,11 +68,11 @@ public class ANONRPCWallet implements IWallet {
 
         log.info("anond sending coins from " + accountName + " to: " + destinationAddress + " " + amount);
         try {
-            String result = getClient(rpcURL).sendFrom(accountName, destinationAddress,amount.doubleValue());
+            String result = getClient(rpcURL).sendFrom(accountName, destinationAddress, amount);
             log.debug("result = " + result);
             return result;
-        } catch (BitcoinException e) {
-            e.printStackTrace();
+        } catch (BitcoinRPCException e) {
+            log.error("Error", e);
             return null;
         }
     }
@@ -91,8 +91,8 @@ public class ANONRPCWallet implements IWallet {
             }else{
                 return addressesByAccount.get(0);
             }
-        } catch (BitcoinException e) {
-            e.printStackTrace();
+        } catch (BitcoinRPCException e) {
+            log.error("Error", e);
             return null;
         }
     }
@@ -104,10 +104,9 @@ public class ANONRPCWallet implements IWallet {
             return null;
         }
         try {
-            double balance = getClient(rpcURL).getBalance(accountName);
-            return BigDecimal.valueOf(balance);
-        } catch (BitcoinException e) {
-            e.printStackTrace();
+            return getClient(rpcURL).getBalance(accountName);
+        } catch (BitcoinRPCException e) {
+            log.error("Error", e);
             return null;
         }
     }
@@ -116,7 +115,7 @@ public class ANONRPCWallet implements IWallet {
         try {
             return new BitcoinJSONRPCClient(rpcURL);
         } catch (MalformedURLException e) {
-            e.printStackTrace();
+            log.error("Error", e);
         }
         return null;
     }

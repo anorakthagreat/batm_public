@@ -1,7 +1,7 @@
 package com.generalbytes.batm.server.extensions.extra.bitcoinprivate;
 
 import com.generalbytes.batm.server.extensions.*;
-import com.generalbytes.batm.server.extensions.extra.bitcoinprivate.sources.FixPriceRateSource;
+import com.generalbytes.batm.server.extensions.FixPriceRateSource;
 import com.generalbytes.batm.server.extensions.extra.bitcoinprivate.wallets.btcpd.BitcoinPrivateRPCWallet;
 import com.generalbytes.batm.server.extensions.extra.dash.sources.coinmarketcap.CoinmarketcapRateSource;
 
@@ -62,11 +62,15 @@ public class BitcoinPrivateExtension extends AbstractExtension {
             StringTokenizer st = new StringTokenizer(sourceLogin, ":");
             String exchangeType = st.nextToken();
             if ("coinmarketcap".equalsIgnoreCase(exchangeType)) {
-                String preferedFiatCurrency = Currencies.USD;
+                String preferredFiatCurrency = Currencies.USD;
+                String apiKey = null;
                 if (st.hasMoreTokens()) {
-                    preferedFiatCurrency = st.nextToken().toUpperCase();
+                    preferredFiatCurrency = st.nextToken().toUpperCase();
                 }
-                return new CoinmarketcapRateSource(preferedFiatCurrency);
+                if (st.hasMoreTokens()) {
+                    apiKey = st.nextToken();
+                }
+                return new CoinmarketcapRateSource(apiKey, preferredFiatCurrency);
             } else if ("btcpfix".equalsIgnoreCase(exchangeType)) {
                 BigDecimal rate = BigDecimal.ZERO;
                 if (st.hasMoreTokens()) {

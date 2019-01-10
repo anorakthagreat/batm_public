@@ -18,7 +18,7 @@
 package com.generalbytes.batm.server.extensions.extra.lisk;
 
 import com.generalbytes.batm.server.extensions.*;
-import com.generalbytes.batm.server.extensions.extra.lisk.sources.FixPriceRateSource;
+import com.generalbytes.batm.server.extensions.FixPriceRateSource;
 import com.generalbytes.batm.server.extensions.extra.lisk.sources.binance.BinanceRateSource;
 import com.generalbytes.batm.server.extensions.extra.lisk.wallets.liskbinancewallet.LskWallet;
 
@@ -38,11 +38,11 @@ public class LiskExtension extends AbstractExtension{
             String walletType = st.nextToken();
 
             if ("liskBinance".equalsIgnoreCase(walletType)) {
-                //"liskBinance:address:binanceApiKey:binanceApiSecret" 
+                //"liskBinance:address:binanceApiKey:binanceApiSecret"
 
                 String address = st.nextToken();
                 String binanceApiKey = st.nextToken();
-                String binanceApiSecret = st.nextToken(); 
+                String binanceApiSecret = st.nextToken();
 
                 if (address != null && binanceApiKey !=null && binanceApiSecret != null ) {
                     return new LskWallet(address,binanceApiKey,binanceApiSecret);
@@ -81,19 +81,23 @@ public class LiskExtension extends AbstractExtension{
             }
             else if ("binanceRateSource".equalsIgnoreCase(exchangeType)) {
                 String preferedFiatCurrency = Currencies.USD;
+                String coinmarketcapApiKey = null;
                 if (st.hasMoreTokens()) {
                     preferedFiatCurrency = st.nextToken().toUpperCase();
                 }
-                return new BinanceRateSource(preferedFiatCurrency);
+                if (st.hasMoreTokens()) {
+                    coinmarketcapApiKey = st.nextToken();
+                }
+                return new BinanceRateSource(preferedFiatCurrency, coinmarketcapApiKey);
             }
         }
         return null;
     }
-    
+
     @Override
     public Set<String> getSupportedCryptoCurrencies() {
         Set<String> result = new HashSet<String>();
-        result.add(Currencies.LSK); 
+        result.add(Currencies.LSK);
         return result;
     }
 

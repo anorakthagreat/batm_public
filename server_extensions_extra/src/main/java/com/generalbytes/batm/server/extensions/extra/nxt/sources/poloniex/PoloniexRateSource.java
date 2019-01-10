@@ -46,7 +46,7 @@ public class PoloniexRateSource implements IRateSource{
             preferedFiatCurrency = Currencies.USD;
         }
         this.preferedFiatCurrency = preferedFiatCurrency;
-        btcRs = new BitfinexExchange("***","***");
+        btcRs = new BitfinexExchange("***","***", preferedFiatCurrency);
         api = RestProxyFactory.createProxy(IPoloniexAPI.class, "https://poloniex.com");
     }
 
@@ -121,7 +121,7 @@ public class PoloniexRateSource implements IRateSource{
                 }
             }
 
-//            System.out.println("tradableLimit = " + tradableLimit);;
+//            log.info("tradableLimit = " + tradableLimit);;
             if (tradableLimit != null) {
                 BigDecimal btcRate = btcRs.getExchangeRateLast(Currencies.BTC, fiatCurrency);
                 if (btcRate != null) {
@@ -136,6 +136,6 @@ public class PoloniexRateSource implements IRateSource{
 
     public static void main(String[] args) {
         PoloniexRateSource rs = new PoloniexRateSource(Currencies.USD);
-        System.out.println("rs = " + rs.getExchangeRateLast(Currencies.NXT,Currencies.USD));
+        log.info("rs = " + rs.getExchangeRateLast(Currencies.NXT,Currencies.USD));
     }
 }

@@ -18,13 +18,13 @@
 package com.generalbytes.batm.server.extensions.extra.bitcoin;
 
 import com.generalbytes.batm.server.extensions.*;
+import com.generalbytes.batm.server.extensions.FixPriceRateSource;
 import com.generalbytes.batm.server.extensions.extra.bitcoin.exchanges.bitfinex.BitfinexExchange;
 import com.generalbytes.batm.server.extensions.extra.bitcoin.exchanges.bittrex.BittrexExchange;
 import com.generalbytes.batm.server.extensions.extra.bitcoin.exchanges.hitbtc.HitbtcExchange;
 import com.generalbytes.batm.server.extensions.extra.bitcoin.exchanges.itbit.ItBitExchange;
 import com.generalbytes.batm.server.extensions.extra.bitcoin.paymentprocessors.bitcoinpay.BitcoinPayPP;
 import com.generalbytes.batm.server.extensions.extra.bitcoin.paymentprocessors.coinofsale.CoinOfSalePP;
-import com.generalbytes.batm.server.extensions.extra.bitcoin.sources.FixPriceRateSource;
 import com.generalbytes.batm.server.extensions.extra.bitcoin.sources.bity.BityRateSource;
 import com.generalbytes.batm.server.extensions.extra.bitcoin.sources.mrcoin.MrCoinRateSource;
 import com.generalbytes.batm.server.extensions.extra.bitcoin.wallets.bitcoind.BATMBitcoindRPCWallet;
@@ -58,7 +58,11 @@ public class BitcoinExtension extends AbstractExtension{
             if ("bitfinex".equalsIgnoreCase(prefix)) {
                 String apiKey = paramTokenizer.nextToken();
                 String apiSecret = paramTokenizer.nextToken();
-                return new BitfinexExchange(apiKey, apiSecret);
+                String preferredFiatCurrency = Currencies.USD;
+                if (paramTokenizer.hasMoreTokens()) {
+                    preferredFiatCurrency = paramTokenizer.nextToken().toUpperCase();
+                }
+                return new BitfinexExchange(apiKey, apiSecret, preferredFiatCurrency);
             }else if ("bittrex".equalsIgnoreCase(prefix)) {
                 String apiKey = paramTokenizer.nextToken();
                 String apiSecret = paramTokenizer.nextToken();
@@ -192,12 +196,33 @@ public class BitcoinExtension extends AbstractExtension{
                     preferredFiatCurrency = st.nextToken().toUpperCase();
                 }
                 return new FixPriceRateSource(rate,preferredFiatCurrency);
+            } else if ("fixprice".equalsIgnoreCase(rsType)) {
+                BigDecimal rate = BigDecimal.ZERO;
+                String preferredFiatCurrency = Currencies.USD;
+                if (st.hasMoreTokens()) {
+                    try {
+                        rate = new BigDecimal(st.nextToken());
+                    } catch (Throwable e) {
+                    }
+                }
+                if (st.hasMoreTokens()) {
+                    preferredFiatCurrency = st.nextToken().toUpperCase();
+                }
+                return new FixPriceRateSource(rate,preferredFiatCurrency);
             }else if ("bitfinex".equalsIgnoreCase(rsType)) {
-               return new BitfinexExchange("**","**");
+                String preferredFiatCurrency = Currencies.USD;
+                if (st.hasMoreTokens()) {
+                    preferredFiatCurrency = st.nextToken().toUpperCase();
+                }
+               return new BitfinexExchange("**","**", preferredFiatCurrency);
             }else if ("bittrex".equalsIgnoreCase(rsType)) {
                 return new BittrexExchange("**","**");
             }else if ("bity".equalsIgnoreCase(rsType)) {
-               return new BityRateSource();
+                String preferredFiatCurrency = Currencies.CHF;
+                if (st.hasMoreTokens()) {
+                    preferredFiatCurrency = st.nextToken().toUpperCase();
+                }
+                return new BityRateSource(preferredFiatCurrency);
             }else if ("mrcoin".equalsIgnoreCase(rsType)) {
                 return new MrCoinRateSource();
             }else if ("itbit".equalsIgnoreCase(rsType)) {

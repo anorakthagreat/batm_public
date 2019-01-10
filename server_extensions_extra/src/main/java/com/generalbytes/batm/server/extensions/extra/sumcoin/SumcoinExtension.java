@@ -17,17 +17,15 @@
  ************************************************************************************/
 package com.generalbytes.batm.server.extensions.extra.sumcoin;
 
-import com.generalbytes.batm.server.extensions.*; 
 import com.generalbytes.batm.server.extensions.AbstractExtension;
 import com.generalbytes.batm.server.extensions.Currencies;
 import com.generalbytes.batm.server.extensions.ICryptoAddressValidator;
-import com.generalbytes.batm.server.extensions.IExchange;
 import com.generalbytes.batm.server.extensions.IRateSource;
 import com.generalbytes.batm.server.extensions.IWallet;
+import com.generalbytes.batm.server.extensions.FixPriceRateSource;
 import com.generalbytes.batm.server.extensions.extra.sumcoin.sumcored.SumcoinRPCWallet;
-import com.generalbytes.batm.server.extensions.extra.sumcoin.sources.FixPriceRateSource;
+import com.generalbytes.batm.server.extensions.extra.sumcoin.sources.sumcoinindex.SumcoinindexRateSource;
 
-import java.util.*;
 import java.math.BigDecimal;
 import java.util.HashSet;
 import java.util.Set;
@@ -85,8 +83,14 @@ public class SumcoinExtension extends AbstractExtension{
         if (sourceLogin != null && !sourceLogin.trim().isEmpty()) {
             StringTokenizer st = new StringTokenizer(sourceLogin,":");
             String exchangeType = st.nextToken();
-
-            if ("sumfix".equalsIgnoreCase(exchangeType)) {
+            
+            if ("sumcoinindex".equalsIgnoreCase(exchangeType)) {
+                if (st.hasMoreTokens()) {
+                    return new SumcoinindexRateSource(st.nextToken().toUpperCase());
+                }
+                return new SumcoinindexRateSource(Currencies.USD);
+            }
+            else if ("sumfix".equalsIgnoreCase(exchangeType)) {
                 BigDecimal rate = BigDecimal.ZERO;
                 if (st.hasMoreTokens()) {
                     try {

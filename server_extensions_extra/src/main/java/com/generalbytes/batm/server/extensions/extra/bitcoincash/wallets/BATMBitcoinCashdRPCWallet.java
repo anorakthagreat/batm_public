@@ -17,8 +17,8 @@
  ************************************************************************************/
 package com.generalbytes.batm.server.extensions.extra.bitcoincash.wallets;
 
-import com.azazar.bitcoin.jsonrpcclient.BitcoinException;
-import com.azazar.bitcoin.jsonrpcclient.BitcoinJSONRPCClient;
+import wf.bitcoin.javabitcoindrpcclient.BitcoinRPCException;
+import wf.bitcoin.javabitcoindrpcclient.BitcoinJSONRPCClient;
 import com.generalbytes.batm.server.extensions.IWallet;
 import com.generalbytes.batm.server.extensions.extra.bitcoincash.RPCClient;
 
@@ -66,11 +66,11 @@ public class BATMBitcoinCashdRPCWallet implements IWallet{
 
         log.info("BitcoinCashd sending coins from " + accountName + " to: " + destinationAddress + " " + amount);
         try {
-            String result = client.sendFrom(accountName, destinationAddress, amount.doubleValue());
+            String result = client.sendFrom(accountName, destinationAddress, amount);
             log.debug("result = " + result);
             return result;
-        } catch (BitcoinException e) {
-            e.printStackTrace();
+        } catch (BitcoinRPCException e) {
+            log.error("Error", e);
             return null;
         }
     }
@@ -89,8 +89,8 @@ public class BATMBitcoinCashdRPCWallet implements IWallet{
             }else{
                 return addressesByAccount.get(0);
             }
-        } catch (BitcoinException e) {
-            e.printStackTrace();
+        } catch (BitcoinRPCException e) {
+            log.error("Error", e);
             return null;
         }
     }
@@ -102,10 +102,9 @@ public class BATMBitcoinCashdRPCWallet implements IWallet{
             return null;
         }
         try {
-            double balance = client.getBalance(accountName);
-            return BigDecimal.valueOf(balance);
-        } catch (BitcoinException e) {
-            e.printStackTrace();
+            return client.getBalance(accountName);
+        } catch (BitcoinRPCException e) {
+            log.error("Error", e);
             return null;
         }
     }
@@ -114,7 +113,7 @@ public class BATMBitcoinCashdRPCWallet implements IWallet{
         try {
             return new RPCClient(rpcURL);
         } catch (MalformedURLException e) {
-            e.printStackTrace();
+            log.error("Error", e);
         }
         return null;
     }

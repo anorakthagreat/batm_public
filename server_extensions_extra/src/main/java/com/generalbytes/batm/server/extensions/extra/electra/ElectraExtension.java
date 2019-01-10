@@ -18,7 +18,7 @@
 package com.generalbytes.batm.server.extensions.extra.electra;
 
 import com.generalbytes.batm.server.extensions.*;
-import com.generalbytes.batm.server.extensions.extra.electra.sources.FixPriceRateSource;
+import com.generalbytes.batm.server.extensions.FixPriceRateSource;
 import com.generalbytes.batm.server.extensions.extra.dash.sources.coinmarketcap.CoinmarketcapRateSource;
 import com.generalbytes.batm.server.extensions.extra.electra.wallets.electrad.ElectraRPCWallet;
 
@@ -90,11 +90,15 @@ public class ElectraExtension extends AbstractExtension{
                 return new FixPriceRateSource(rate, preferedFiatCurrency);
             }
             else if ("coinmarketcap".equalsIgnoreCase(exchangeType)) {
-                String preferedFiatCurrency = Currencies.USD;
+                String preferredFiatCurrency = Currencies.USD;
+                String apiKey = null;
                 if (st.hasMoreTokens()) {
-                    preferedFiatCurrency = st.nextToken().toUpperCase();
+                    preferredFiatCurrency = st.nextToken().toUpperCase();
                 }
-                return new CoinmarketcapRateSource(preferedFiatCurrency);
+                if (st.hasMoreTokens()) {
+                    apiKey = st.nextToken();
+                }
+                return new CoinmarketcapRateSource(apiKey, preferredFiatCurrency);
             }
         }
         return null;

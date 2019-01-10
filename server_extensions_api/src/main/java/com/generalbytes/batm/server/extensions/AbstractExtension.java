@@ -17,6 +17,7 @@
  ************************************************************************************/
 package com.generalbytes.batm.server.extensions;
 
+import com.generalbytes.batm.server.extensions.chat.IChatCommand;
 import com.generalbytes.batm.server.extensions.watchlist.IWatchList;
 
 import java.util.Set;
@@ -25,7 +26,7 @@ import java.util.Set;
  * This class serves as an optional parent for extensions.
  */
 public abstract class AbstractExtension implements IExtension{
-    private IExtensionContext ctx;
+    protected IExtensionContext ctx;
 
     @Override
     public void init(IExtensionContext ctx) {
@@ -80,6 +81,11 @@ public abstract class AbstractExtension implements IExtension{
 
     @Override
     public Set<IRestService> getRestServices() {
+        return null;
+    }
+
+    @Override
+    public Set<Class> getChatCommands() {
         return null;
     }
 

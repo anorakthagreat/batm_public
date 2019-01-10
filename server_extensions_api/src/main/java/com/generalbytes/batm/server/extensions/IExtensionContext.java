@@ -21,6 +21,7 @@ import com.generalbytes.batm.server.extensions.exceptions.SellException;
 
 import java.io.File;
 import java.math.BigDecimal;
+import java.text.SimpleDateFormat;
 import java.util.List;
 import java.util.Map;
 
@@ -28,6 +29,11 @@ public interface IExtensionContext {
     int DIRECTION_NONE          = 1;
     int DIRECTION_BUY_CRYPTO    = 2; //from customer view
     int DIRECTION_SELL_CRYPTO   = 4; //from customer view
+
+    int PERMISSION_NONE = 0;
+    int PERMISSION_READ = 1;
+    int PERMISSION_WRITE = 2;
+    int PERMISSION_EXECUTE = 4;
 
     /**
      * Registers listener for listening to transaction events
@@ -42,6 +48,58 @@ public interface IExtensionContext {
      */
     boolean removeTransactionListener(ITransactionListener listener);
 
+    /**
+     * Finds and returns transaction by given remote or local transaction id
+     * @param remoteOrLocalTransactionId
+     * @return
+     */
+    ITransactionDetails findTransactionByTransactionId(String remoteOrLocalTransactionId);
+
+    /**
+     * Finds person by chat user id
+     * @param chatUserId
+     * @return
+     */
+    IPerson findPersonByChatId(String chatUserId);
+
+    /**
+     * Check if person has access to provided object.
+     * For example person needs to be in same organization or needs to have at least read-only role
+     * @param permissionLevel
+     * @param person
+     * @param obj
+     * @return
+     */
+    boolean hasPersonPermissionToObject(int permissionLevel, IPerson person, Object obj);
+
+    /**
+     * Checks whether the terminal belongs to same organization as person.
+     * @param terminalSerialNumber
+     * @param person
+     * @return
+     */
+    boolean isTerminalFromSameOrganizationAsPerson(String terminalSerialNumber, IPerson person);
+
+    /**
+     * Finds and returns identity based on provided publicIdentityId
+     * @param publicIdentityId
+     * @return
+     */
+    IIdentity findIdentityByIdentityId(String publicIdentityId);
+
+    /**
+     * Finds and returns identity based on provided phone number. This number has to be in international format (leading +countrycode is required)
+     * @param phoneNumber
+     * @return
+     */
+    IIdentity findIdentityByPhoneNumber(String phoneNumber);
+
+    /**
+     * Finds and returns identity based on provided phone number this number. If you don't specify country then number has to be in international format (leading +countrycode is required)
+     * @param phoneNumber
+     * @return
+     */
+    IIdentity findIdentityByPhoneNumber(String phoneNumber, String countryName);
 
     //Email related stuff
     public static class EmbeddedEmailImage {
@@ -52,11 +110,12 @@ public interface IExtensionContext {
     /**
      * Sends plain-text email asynchronously
      * @param from
-     * @param addresslistTo
+     * @param addressListTo
      * @param subject
      * @param messageText
+     * @param replyTo - optional
      */
-    void sendMailAsync(final String from, final String addresslistTo, final String subject, final String messageText);
+    void sendMailAsync(final String from, final String addressListTo, final String subject, final String messageText, String replyTo);
 
     /**
      * Sends plain-text email containing attachment asynchronously
@@ -67,8 +126,9 @@ public interface IExtensionContext {
      * @param attachmentFileName
      * @param attachmentContent
      * @param attachmentMimeType
+     * @param replyTo - optional
      */
-    void sendMailAsyncWithAttachment(final String from, final String addresslistTo, final String subject, final String messageText, final String attachmentFileName, final byte[] attachmentContent, final String attachmentMimeType);
+    void sendMailAsyncWithAttachment(final String from, final String addresslistTo, final String subject, final String messageText, final String attachmentFileName, final byte[] attachmentContent, final String attachmentMimeType, String replyTo);
 
     /**
      * Sends email containing html text
@@ -78,7 +138,7 @@ public interface IExtensionContext {
      * @param messageText
      * @param embeddedEmailImages
      */
-    void sendHTMLMailAsync(final String from, final String addresslistTo, final String subject, final String messageText, final EmbeddedEmailImage... embeddedEmailImages);
+    void sendHTMLMailAsync(final String from, final String addresslistTo, final String subject, final String messageText, String replyTo, final EmbeddedEmailImage... embeddedEmailImages);
 
     /**
      * Sends email containing html and attachments
@@ -89,8 +149,9 @@ public interface IExtensionContext {
      * @param attachmentFileName
      * @param attachmentContent
      * @param attachmentMimeType
+     * @param replyTo - optional
      */
-    void sendHTMLMailAsyncWithAttachment(final String from, final String addresslistTo, final String subject, final String messageText, final String attachmentFileName, final byte[] attachmentContent, final String attachmentMimeType);
+    void sendHTMLMailAsyncWithAttachment(final String from, final String addresslistTo, final String subject, final String messageText, final String attachmentFileName, final byte[] attachmentContent, final String attachmentMimeType, String replyTo);
 
     /**
      * Sends SMS message to specified phone number asynchronously. Terminal serial number is used to detect country code prefix from its location
@@ -115,30 +176,37 @@ public interface IExtensionContext {
     String getServerVersion();
 
     /**
-     * Returns list of terminal serial numbers that have available cash to be dispensed by sell transactions
-     * @param fiatAmount
-     * @param fiatCurrency
-     * @return
-     */
-    List<String> findTerminalsWithAvailableCashForSell(BigDecimal fiatAmount, String fiatCurrency);
-
-    /**
-     * This method returns how much is in the machine available for withdraw - what is already allocated
+     * Returns cash amount that is available to be dispensed by sell transactions.
+     * Algorithm takes into account also that some of the banknotes are reserved(are excluded from sum) for upcoming withdrawals by other customers.
      * @param terminalSerialNumber
      * @param fiatCurrency
      * @return
      */
     BigDecimal calculateCashAvailableForSell(String terminalSerialNumber, String fiatCurrency);
 
+
+    /**
+     * Returns banknotes that are available to be dispensed by sell transactions.
+     * Algorithm takes into account also that some of the banknotes are reserved(are excluded from sum) for upcoming withdrawals by other customers.
+     * First String in returning
+     * @param terminalSerialNumber
+     * @param fiatCurrency
+     * @return
+     */
+    Map<BigDecimal, Integer> getAvailableBanknotesConsideringFutureWithdrawals(String terminalSerialNumber, String fiatCurrency);
+
+
     /**
      * Call this transaction to create a sell transaction. After this call server will await crypto transaction to arrive and allocate cash for the customer.
      * @param fiatAmount
      * @param fiatCurrency
-     * @param cryptoAmount
+     * @param cryptoAmount - ignored - reserved for future.
      * @param cryptoCurrency
-     * @return
+     * @param identityPublicId
+     * @param discountCode
+     * @return - read ITransactionSellInfo.getTransactionUUID() to find out what should be filled in sell QR code.
      */
-    ITransactionSellInfo sellCrypto(String terminalSerialNumber, BigDecimal fiatAmount, String fiatCurrency, BigDecimal cryptoAmount, String cryptoCurrency) throws SellException;
+    ITransactionSellInfo sellCrypto(String terminalSerialNumber, BigDecimal fiatAmount, String fiatCurrency, BigDecimal cryptoAmount, String cryptoCurrency, String identityPublicId, String discountCode) throws SellException;
 
 
     /**
@@ -168,4 +236,56 @@ public interface IExtensionContext {
      * @return
      */
     List<IBanknoteCounts> getCashBoxes(String terminalSerialNumber);
+
+
+    /**
+     * Returns list of all terminals registered on the system.
+     * @return
+     */
+    List<ITerminal> findAllTerminals();
+
+    /**
+     * Returns terminal by serial number.
+     * @param serialNumber
+     * @return
+     */
+    ITerminal findTerminalBySerialNumber(String serialNumber);
+
+
+    /**
+     * Returns list of terminal serial numbers of terminals that have available cash to be dispensed by sell transactions.
+     * Algorithm takes into account also if amount can be built by banknotes in output cash boxes and
+     * if some of the banknotes are reserved for upcoming withdrawals by other customers.
+     * @param fiatAmount
+     * @param fiatCurrency
+     * @param listOfTerminalSerialNumbers - null means all
+     * @return
+     */
+    List<String> findTerminalsWithAvailableCashForSell(BigDecimal fiatAmount, String fiatCurrency,List<String> listOfTerminalSerialNumbers);
+
+    /**
+     * This method helps to you to package and store paper wallet in password encrypted archive.
+     * It also includes privateKey and address in form of QR code into the archive.
+     * Such package is safe to later be sent via email as used 7ZIP AES_STRENGTH_256 seems sufficient protection against brute-force.
+     * @param privateKey
+     * @param address
+     * @param password
+     * @param cryptoCurrency
+     * @return
+     */
+    byte[] createPaperWallet7ZIP(String privateKey, String address, String password, String cryptoCurrency);
+
+    /**
+     * Returns time format by person. In US users they prefer mm/dd/yyyy anywhere else dd.mm.yyyy
+     * @param person
+     * @return
+     */
+    SimpleDateFormat getTimeFormatByPerson(IPerson person);
+
+    /**
+     * Returns crypto configurations used by terminals of specified serial numbers.
+     * @param serialNumbers
+     * @return
+     */
+    List<ICryptoConfiguration> findCryptoConfigurationsByTerminalSerialNumbers(List<String> serialNumbers);
 }

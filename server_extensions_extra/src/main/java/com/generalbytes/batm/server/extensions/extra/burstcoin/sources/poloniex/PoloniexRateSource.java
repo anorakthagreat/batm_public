@@ -40,7 +40,7 @@ public class PoloniexRateSource implements IRateSource {
     private static final long MAXIMUM_ALLOWED_TIME_OFFSET = 30 * 1000; //30sec
 
     public PoloniexRateSource() {
-        btcRs = new BitfinexExchange("***","***");
+        btcRs = new BitfinexExchange("***","***",Currencies.USD);
         api = RestProxyFactory.createProxy(IPoloniexAPI.class, "https://poloniex.com");
     }
 
@@ -125,6 +125,6 @@ public class PoloniexRateSource implements IRateSource {
 
     public static void main(String[] args) {
         PoloniexRateSource rs = new PoloniexRateSource();
-        System.out.println("rs = " + rs.getExchangeRateLast(Currencies.NXT,Currencies.USD));
+        log.info("rs = " + rs.getExchangeRateLast(Currencies.NXT,Currencies.USD));
     }
 }

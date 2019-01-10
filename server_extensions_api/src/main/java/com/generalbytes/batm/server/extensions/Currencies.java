@@ -32,6 +32,7 @@ public class Currencies {
     public static final String BSD = "BSD"; //BitSend
     public static final String BTDX = "BTDX"; //Bitcloud
     public static final String BURST = "BURST"; //Burstcoin
+    public static final String CLOAK = "CLOAK"; //CloakCoin
     public static final String ECA = "ECA"; //Electra
     public static final String ETH = "ETH";
     public static final String EFL = "EFL";
@@ -39,6 +40,7 @@ public class Currencies {
     public static final String LSK = "LSK"; //lisk
     public static final String VIA = "VIA";
     public static final String DEX = "DEX";
+    public static final String DAI = "DAI";
     public static final String DASH = "DASH";
     public static final String DGB = "DGB";
     public static final String DOGE = "DOGE";
@@ -95,6 +97,7 @@ public class Currencies {
     public static final String JPY = "JPY";
     public static final String KES = "KES";
     public static final String KRW = "KRW";
+    public static final String KWD = "KWD"; // Kuwaiti dinar
     public static final String KZT = "KZT";
     public static final String MKD = "MKD";
     public static final String MXN = "MXN";
@@ -141,6 +144,7 @@ public class Currencies {
         crypto.add(BSD);
         crypto.add(BTDX);
         crypto.add(BURST);
+        crypto.add(CLOAK);
         crypto.add(ECA);
         crypto.add(EFL);
         crypto.add(ETH);
@@ -203,6 +207,7 @@ public class Currencies {
         fiat.add(JPY);
         fiat.add(KES);
         fiat.add(KRW);
+        fiat.add(KWD);
         fiat.add(KZT);
         fiat.add(MKD);
         fiat.add(MXN);

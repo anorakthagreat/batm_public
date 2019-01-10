@@ -17,8 +17,11 @@
  ************************************************************************************/
 package com.generalbytes.batm.server.extensions.extra.bitcoincash;
 
-import com.azazar.bitcoin.jsonrpcclient.BitcoinException;
-import com.azazar.bitcoin.jsonrpcclient.BitcoinJSONRPCClient;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import wf.bitcoin.javabitcoindrpcclient.BitcoinRPCException;
+import wf.bitcoin.javabitcoindrpcclient.BitcoinJSONRPCClient;
 
 import java.net.MalformedURLException;
 import java.security.KeyManagementException;
@@ -33,6 +36,7 @@ import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 
 public class RPCClient extends BitcoinJSONRPCClient {
+    private static final Logger log = LoggerFactory.getLogger("batm.master.extensions.RPCClient");
     public RPCClient(String rpcUrl) throws MalformedURLException {
         super(rpcUrl);
         setHostnameVerifier((s, sslSession) -> true);
@@ -50,13 +54,13 @@ public class RPCClient extends BitcoinJSONRPCClient {
             }}, null);
             setSslSocketFactory(sslcontext.getSocketFactory());
         } catch (NoSuchAlgorithmException e) {
-            e.printStackTrace();
+            log.error("Error", e);
         } catch (KeyManagementException e) {
-            e.printStackTrace();
+            log.error("Error", e);
         }
     }
 
-    public double getEstimateFee(int numberOfBlocks) throws BitcoinException {
+    public double getEstimateFee(int numberOfBlocks) throws BitcoinRPCException {
         return ((Number)query("estimatefee",numberOfBlocks)).doubleValue();
     }
     public interface ReceivedAddress {
@@ -67,7 +71,7 @@ public class RPCClient extends BitcoinJSONRPCClient {
         String label();
         List<String> txids();
     }
-    public List<ReceivedAddress> listReceivedByAddress2(int minConf) throws BitcoinException {
+    public List<ReceivedAddress> listReceivedByAddress2(int minConf) throws BitcoinRPCException {
         return new ReceivedAddressListWrapper((List)this.query("listreceivedbyaddress", minConf));
     }
 

@@ -1,8 +1,6 @@
 package com.generalbytes.gradle.model
 
 import groovy.transform.EqualsAndHashCode
-import org.gradle.api.artifacts.ModuleIdentifier
-import org.gradle.api.artifacts.ModuleVersionIdentifier
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 
 import java.util.regex.Matcher
@@ -10,7 +8,7 @@ import java.util.regex.Pattern
 
 @EqualsAndHashCode
 class ChecksumAssertion implements Comparable<ChecksumAssertion> {
-    private static final PATTERN = Pattern.compile('^([^:]*):([^:]*):([^:]*(-SNAPSHOT:[^:]*)?):([^:]*)$')
+    private static final PATTERN = Pattern.compile('^([^:]*):([^:]*):([^:]*(-SNAPSHOT:[^:]*)?)(:([^:]*))?:([^:]*)$')
 
     final ModuleComponentIdentifier artifactIdentifier
     final String checksum
@@ -26,10 +24,9 @@ class ChecksumAssertion implements Comparable<ChecksumAssertion> {
     }
 
 
-
     ChecksumAssertion(String s) {
         /**
-         * group:module:version:checksum
+         * group:module:version:checksum or group:module:version:classifier:checksum
          * in case of using snapshot versions, the version string can become something like
          * '1.0.6-SNAPSHOT:20180927.101917-1' (i.e. can contain another colon)
          */
@@ -38,9 +35,13 @@ class ChecksumAssertion implements Comparable<ChecksumAssertion> {
             def msg = "Assertion definition '$s' has incorrect format."
             throw new IllegalArgumentException(msg)
         }
-        this.artifactIdentifier =
-            new SimpleModuleVersionIdentifier(matcher.group(1), matcher.group(2), matcher.group(3))
-        this.checksum = matcher.group(5)
+        this.artifactIdentifier = new SimpleModuleVersionIdentifier(
+            matcher.group(1),
+            matcher.group(2),
+            matcher.group(3),
+            matcher.group(6)
+        )
+        this.checksum = matcher.group(7)
     }
 
     @Override

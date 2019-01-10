@@ -13,6 +13,7 @@ import java.io.*;
 import java.util.Hashtable;
 import java.util.Random;
 
+import com.generalbytes.batm.server.extensions.Currencies;
 import com.generalbytes.batm.server.extensions.IPaperWallet;
 import com.generalbytes.batm.server.extensions.IPaperWalletGenerator;
 import com.google.zxing.BarcodeFormat;
@@ -22,10 +23,12 @@ import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel;
 
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 public class TokencoinPaperWalletGenerator implements IPaperWalletGenerator {
+    private static final Logger log = LoggerFactory.getLogger("batm.master.extensions.TokencoinPaperWalletGenerator");
 
     private static int imagesize = 400;
     private static final String MESSAGE = "We have attached a QR code with your address. Please use your QR code to add more funds to your account. Your address is ";
@@ -48,6 +51,7 @@ public class TokencoinPaperWalletGenerator implements IPaperWalletGenerator {
         TokencoinPaperWallet paperwallet = new TokencoinPaperWallet();
         byte[] image = generateQR(newtkn, imagesize);
 
+        paperwallet.setCryptoCurrency(Currencies.TKN);
         paperwallet.setMessage(MESSAGE + newtkn);
         paperwallet.setFileExtension("png");
         paperwallet.setAddress(newtkn);
@@ -98,9 +102,9 @@ public class TokencoinPaperWalletGenerator implements IPaperWalletGenerator {
             stream.close();
             return baos.toByteArray();
         }	catch (WriterException e) {
-            e.printStackTrace();
+            log.error("Error", e);
         } catch (IOException e) {
-            e.printStackTrace();
+            log.error("Error", e);
         }
         return null;
     }
